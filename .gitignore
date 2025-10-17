@@ -55,7 +55,7 @@ web/build/
 web/generated_plugin_registrant.dart
 
 # Environment and credentials
-.env
+assets/.env
 *.keystore
 *.jks
 *.p12

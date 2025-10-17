@@ -72,106 +72,85 @@ class _StockScreenState extends State<StockScreen> {
   @override
   void initState() {
     super.initState();
-    _shopifyService =
-        ShopifyService(shopDomain: widget.shopDomain, accessToken: widget.accessToken);
+    _shopifyService = ShopifyService(
+        shopDomain: widget.shopDomain, accessToken: widget.accessToken);
     _initAll();
   }
 
   Future<void> _initAll() async {
     setState(() => _loading = true);
-    await _prepareControllers();
+    _prepareControllers();
     await _maybeShowLocalChoice();
     setState(() => _loading = false);
   }
 
-  Future<void> _prepareControllers() async {
+  void _prepareControllers() {
     for (final cat in _categories.keys) {
       for (final aroma in _categories[cat]!) {
         final key = _makeKey(cat, aroma);
         if (!_controllers.containsKey(key)) {
           final c = TextEditingController(text: '0');
+          c.addListener(() {
+            _localValues[key] = c.text;
+            _saveLocalInstant();
+          });
           _controllers[key] = c;
           _invalid[key] = false;
-          // Salvare instant la schimbare
-          c.addListener(() => _onControllerChange(key));
         }
       }
     }
-  }
-
-  void _onControllerChange(String key) async {
-    final prefs = await SharedPreferences.getInstance();
-    final text = _controllers[key]!.text;
-    _localValues[key] = text;
-    await prefs.setString('local_stock_v1', json.encode(_localValues));
   }
 
   String _makeKey(String cat, String aroma) => '$cat|$aroma';
 
+  Future<void> _saveLocalInstant() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('local_stock_v1', json.encode(_localValues));
+  }
+
   Future<void> _maybeShowLocalChoice() async {
     final prefs = await SharedPreferences.getInstance();
     final localJson = prefs.getString('local_stock_v1');
-    Map<String, String> localValues = {};
-    if (localJson != null) {
-      localValues = Map<String, String>.from(json.decode(localJson));
-    }
-
     await _loadFromShopify();
+    if (localJson == null) return;
+
+    final Map<String, String> localMap = Map<String, String>.from(json.decode(localJson));
 
     bool hasDiff = false;
-    for (final cat in _categories.keys) {
-      for (final aroma in _categories[cat]!) {
-        final key = _makeKey(cat, aroma);
-        final localVal = localValues[key] ?? '0';
-        final shopVal = _controllers[key]!.text;
-        if (localVal != shopVal) {
-          hasDiff = true;
-          break;
-        }
+    for (final key in localMap.keys) {
+      if (localMap[key] != _controllers[key]?.text) {
+        hasDiff = true;
+        break;
       }
-      if (hasDiff) break;
     }
-
-    if (!hasDiff) {
-      _localValues = {};
-      setState(() {});
-      return;
-    }
+    if (!hasDiff) return;
 
     final useLocal = await showDialog<bool>(
       context: context,
       barrierDismissible: false,
-      builder: (ctx) {
-        return AlertDialog(
-          title: Text('Date locale gasite', style: TextStyle(color: Colors.black)),
-          content: Text(
-            'Exista stocuri salvate local. Ce vrei sa folosesti?',
-            style: TextStyle(color: Colors.black),
-          ),
-          actions: [
-            TextButton(
+      builder: (ctx) => AlertDialog(
+        title: Text('Date locale gasite', style: TextStyle(color: Colors.black)),
+        content: Text('Exista stocuri salvate local. Ce vrei sa folosesti?',
+            style: TextStyle(color: Colors.black)),
+        actions: [
+          TextButton(
               onPressed: () => Navigator.of(ctx).pop(false),
-              child: Text('Deschide stocul curent', style: TextStyle(color: Colors.blue)),
-            ),
-            TextButton(
+              child: Text('Deschide stocul curent', style: TextStyle(color: Colors.blue))),
+          TextButton(
               onPressed: () => Navigator.of(ctx).pop(true),
-              child: Text('Continua modificarile', style: TextStyle(color: Colors.blue)),
-            ),
-          ],
-        );
-      },
+              child: Text('Continua modificarile', style: TextStyle(color: Colors.blue))),
+        ],
+      ),
     );
 
     if (useLocal == true) {
-      _localValues = localValues;
+      _localValues = localMap;
       for (final entry in _localValues.entries) {
         final k = entry.key;
         if (_controllers.containsKey(k)) _controllers[k]!.text = entry.value;
       }
     } else {
-      _localValues = {};
       await prefs.remove('local_stock_v1');
-      setState(() {});
     }
   }
 
@@ -179,7 +158,6 @@ class _StockScreenState extends State<StockScreen> {
     try {
       _shopifyProducts = await _shopifyService.fetchProducts();
       final Map<String, int> shopifyMap = {};
-
       for (final p in _shopifyProducts) {
         final title = (p['title'] ?? '').toString().toLowerCase();
         final variants = p['variants'] as List<dynamic>;
@@ -187,17 +165,17 @@ class _StockScreenState extends State<StockScreen> {
           final inventory = variants[0]['inventory_quantity'] ?? 0;
           for (final cat in _categories.keys) {
             for (final aroma in _categories[cat]!) {
-              if (title.contains(aroma.toLowerCase())) shopifyMap[aroma] = inventory;
+              if (title.contains(aroma.toLowerCase())) {
+                shopifyMap[aroma] = inventory;
+              }
             }
           }
         }
       }
-
       for (final cat in _categories.keys) {
         for (final aroma in _categories[cat]!) {
           final key = _makeKey(cat, aroma);
-          final shopVal = shopifyMap[aroma];
-          _controllers[key]!.text = shopVal?.toString() ?? '0';
+          _controllers[key]!.text = shopifyMap[aroma]?.toString() ?? '0';
         }
       }
     } catch (e) {
@@ -206,84 +184,86 @@ class _StockScreenState extends State<StockScreen> {
   }
 
   void _increment(String key) {
-    final n = int.tryParse(_controllers[key]!.text.trim());
-    if (n == null) return;
+    final n = int.tryParse(_controllers[key]!.text.trim()) ?? 0;
     _controllers[key]!.text = (n + 1).toString();
   }
 
   void _decrement(String key) {
-    final n = int.tryParse(_controllers[key]!.text.trim());
-    if (n == null) return;
+    final n = int.tryParse(_controllers[key]!.text.trim()) ?? 0;
     _controllers[key]!.text = (n - 1 < 0 ? 0 : n - 1).toString();
   }
 
   Future<void> _saveAll() async {
-    final Map<String, int> validToSend = {};
+    setState(() {});
+    final Map<String, int> toSend = {};
     final List<String> invalids = [];
+    _localValues = {};
 
     for (final cat in _categories.keys) {
       for (final aroma in _categories[cat]!) {
         final key = _makeKey(cat, aroma);
         final text = _controllers[key]!.text.trim();
-        final n = int.tryParse(text);
-        if (n == null) {
-          invalids.add(aroma);
+        _localValues[key] = text;
+        final val = int.tryParse(text);
+        if (val == null) {
           _invalid[key] = true;
+          invalids.add(aroma);
         } else {
-          validToSend[key] = n;
           _invalid[key] = false;
+          toSend[key] = val;
         }
       }
     }
 
-    setState(() {});
+    await _saveLocalInstant();
 
     if (invalids.isNotEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Din cauza anumitor valori nu se poate salva stocul'),
-          duration: Duration(seconds: 3),
-        ),
-      );
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text("Din cauza anumitor valori nu se poate salva stocul"),
+        duration: Duration(seconds: 3),
+      ));
+      setState(() {});
       return;
     }
 
-    // Trimitere catre Shopify
-    bool success = true;
-    final locationId = await _shopifyService.getDefaultLocationId();
-    for (final key in validToSend.keys) {
-      final aroma = key.split('|')[1];
-      final qty = validToSend[key]!;
-      final shopProduct = _shopifyProducts.firstWhere(
-              (p) => (p['title'] ?? '').toString().toLowerCase().contains(aroma.toLowerCase()),
-          orElse: () => null);
-      if (shopProduct == null) continue;
-      final variants = shopProduct['variants'] as List<dynamic>;
-      if (variants.isEmpty) continue;
-      final inventoryItemId = variants[0]['inventory_item_id']?.toString();
-      if (inventoryItemId == null) continue;
+    String? locationId;
+    try {
+      locationId = await _shopifyService.getDefaultLocationId();
+    } catch (e) {
+      print('Eroare la preluare locationId: $e');
+    }
 
-      try {
-        final resp = await _shopifyService.updateInventoryQuantityByInventoryItem(
-            inventoryItemId, qty, locationId);
-        if (resp.statusCode != 200) success = false;
-      } catch (_) {
-        success = false;
+    bool anySent = false;
+    for (final cat in _categories.keys) {
+      for (final aroma in _categories[cat]!) {
+        final key = _makeKey(cat, aroma);
+        final qty = toSend[key]!;
+        final shopProduct =
+        _shopifyProducts.firstWhere((p) => (p['title'] ?? '') == aroma, orElse: () => null);
+        if (shopProduct == null) continue;
+        final variants = shopProduct['variants'] as List<dynamic>;
+        if (variants.isEmpty) continue;
+        final inventoryItemId = variants[0]['inventory_item_id']?.toString();
+        if (inventoryItemId == null) continue;
+
+        try {
+          if (locationId != null) {
+            final resp = await _shopifyService.updateInventoryQuantityByInventoryItem(
+                inventoryItemId, qty, locationId);
+            if (resp.statusCode == 200) anySent = true;
+          }
+        } catch (e) {
+          print('Eroare la update aroma $aroma : $e');
+        }
       }
     }
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          success
-              ? 'Stocul a fost updatat cu succes'
-              : 'Din cauza anumitor valori nu se poate salva stocul',
-        ),
-        duration: Duration(seconds: 3),
-      ),
-    );
-
-    await _loadFromShopify();
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(anySent
+          ? "Stocul a fost updatat cu succes"
+          : "Din cauza anumitor valori nu se poate salva stocul"),
+      duration: Duration(seconds: 3),
+    ));
     setState(() {});
   }
 
@@ -331,7 +311,10 @@ class _StockScreenState extends State<StockScreen> {
             child: ElevatedButton(
               onPressed: () => _increment(key),
               style: ElevatedButton.styleFrom(
-                  padding: EdgeInsets.zero, backgroundColor: Colors.white, foregroundColor: Colors.black),
+                padding: EdgeInsets.zero,
+                backgroundColor: Colors.white,
+                foregroundColor: Colors.black,
+              ),
               child: Text('+', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
             ),
           ),
@@ -342,7 +325,10 @@ class _StockScreenState extends State<StockScreen> {
             child: ElevatedButton(
               onPressed: () => _decrement(key),
               style: ElevatedButton.styleFrom(
-                  padding: EdgeInsets.zero, backgroundColor: Colors.white, foregroundColor: Colors.black),
+                padding: EdgeInsets.zero,
+                backgroundColor: Colors.white,
+                foregroundColor: Colors.black,
+              ),
               child: Text('-', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
             ),
           ),
@@ -353,7 +339,6 @@ class _StockScreenState extends State<StockScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final bottomInset = MediaQuery.of(context).viewInsets.bottom;
     return Scaffold(
       backgroundColor: Colors.black,
       appBar: AppBar(
@@ -362,54 +347,44 @@ class _StockScreenState extends State<StockScreen> {
         backgroundColor: Colors.black,
         elevation: 0,
       ),
-      body: Stack(
-        children: [
-          _loading
-              ? Center(child: CircularProgressIndicator(color: Colors.white))
-              : Padding(
-            padding: const EdgeInsets.fromLTRB(12, 8, 12, 80),
-            child: ListView(
-              children: _categories.keys.map((cat) {
-                return ExpansionTile(
-                  tilePadding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  collapsedBackgroundColor: Colors.transparent,
-                  backgroundColor: Colors.transparent,
-                  title: Text(cat,
-                      style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
-                  children: _categories[cat]!
-                      .map((a) => Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 8.0),
-                    child: _buildAromaRow(cat, a),
-                  ))
-                      .toList(),
-                );
-              }).toList(),
-            ),
-          ),
-          Positioned(
-            right: 16,
-            bottom: 16 + bottomInset,
-            child: AnimatedPadding(
-              duration: Duration(milliseconds: 200),
-              padding: EdgeInsets.only(bottom: bottomInset),
-              child: SizedBox(
-                height: 52,
-                child: ElevatedButton(
-                  onPressed: _saveAll,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.white,
-                    foregroundColor: Colors.black,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                  ),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 18.0),
-                    child: Text('Save Stock', style: TextStyle(fontWeight: FontWeight.bold)),
-                  ),
-                ),
+      body: _loading
+          ? Center(child: CircularProgressIndicator(color: Colors.white))
+          : Padding(
+        padding: const EdgeInsets.all(12.0),
+        child: ListView(
+          children: _categories.keys.map((cat) {
+            return ExpansionTile(
+              tilePadding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              collapsedBackgroundColor: Colors.transparent,
+              backgroundColor: Colors.transparent,
+              title: Text(cat,
+                  style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
+              children: _categories[cat]!
+                  .map((a) => Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 8.0),
+                child: _buildAromaRow(cat, a),
+              ))
+                  .toList(),
+            );
+          }).toList(),
+        ),
+      ),
+      bottomNavigationBar: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          child: SizedBox(
+            height: 52,
+            child: ElevatedButton(
+              onPressed: _saveAll,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.white,
+                foregroundColor: Colors.black,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
               ),
+              child: Text('Save Stock', style: TextStyle(fontWeight: FontWeight.bold)),
             ),
           ),
-        ],
+        ),
       ),
     );
   }
