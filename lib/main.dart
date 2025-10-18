@@ -4,43 +4,67 @@ import 'screens/stock_screen.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await dotenv.load(fileName: "assets/.env"); // sau ".env" dacă folosești direct .env în root
+
+  // Încarcă variabilele din .env
+  await dotenv.load(fileName: "assets/.env");
+
   final shopDomain = dotenv.env['SHOP_URL'];
   final accessToken = dotenv.env['ACCESS_TOKEN'];
 
   if (shopDomain == null || accessToken == null) {
-    runApp(MaterialApp(
-      home: Scaffold(
-        backgroundColor: Colors.black,
-        body: Center(
-          child: Text(
-            'SHOP_URL sau ACCESS_TOKEN lipsesc in .env',
-            style: TextStyle(color: Colors.white),
-          ),
-        ),
-      ),
-    ));
+    runApp(const EnvErrorApp());
     return;
   }
 
-  runApp(ShopifyStockApp(shopDomain: shopDomain, accessToken: accessToken));
+  runApp(ShopifyManagerApp(
+    shopDomain: shopDomain,
+    accessToken: accessToken,
+  ));
 }
 
-class ShopifyStockApp extends StatelessWidget {
-  final String shopDomain;
-  final String accessToken;
-
-  ShopifyStockApp({required this.shopDomain, required this.accessToken});
+class EnvErrorApp extends StatelessWidget {
+  const EnvErrorApp({super.key});
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Shopify Stock',
+      home: Scaffold(
+        backgroundColor: Colors.black,
+        body: const Center(
+          child: Text(
+            'SHOP_URL sau ACCESS_TOKEN lipsesc în .env',
+            style: TextStyle(color: Colors.white),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class ShopifyManagerApp extends StatelessWidget {
+  final String shopDomain;
+  final String accessToken;
+
+  const ShopifyManagerApp({
+    super.key,
+    required this.shopDomain,
+    required this.accessToken,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      title: 'Shopify Manager',
       theme: ThemeData.dark().copyWith(
         scaffoldBackgroundColor: Colors.black,
-        textTheme: TextTheme(bodyMedium: TextStyle(color: Colors.white)),
+        textTheme: const TextTheme(
+          bodyMedium: TextStyle(color: Colors.white),
+        ),
       ),
-      home: const StockScreen(),
+      home: StockScreen(
+        shopDomain: shopDomain,
+        accessToken: accessToken,
+      ),
     );
   }
 }
