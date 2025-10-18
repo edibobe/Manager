@@ -40,7 +40,7 @@ class ShopifyStockApp extends StatelessWidget {
         scaffoldBackgroundColor: Colors.black,
         textTheme: TextTheme(bodyMedium: TextStyle(color: Colors.white)),
       ),
-      home: StockScreen(shopDomain: shopDomain, accessToken: accessToken),
+      home: const StockScreen(),
     );
   }
 }

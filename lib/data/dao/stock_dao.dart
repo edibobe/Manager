@@ -1,36 +1,22 @@
 import 'package:drift/drift.dart';
 import '../database/app_database.dart';
-import '../tables/stock_items.dart';
-import '../models/stock_item.dart';
+import '../database/tables/stock_items.dart';
 
 part 'stock_dao.g.dart';
 
 @DriftAccessor(tables: [StockItems])
 class StockDao extends DatabaseAccessor<AppDatabase> with _$StockDaoMixin {
-  StockDao(AppDatabase db) : super(db);
+  final AppDatabase db;
+  StockDao(this.db) : super(db);
 
-  Future<List<StockItem>> getAllItems() async {
-    final rows = await select(stockItems).get();
-    return rows.map((r) => StockItem(
-      id: r.id,
-      category: r.category,
-      aroma: r.aroma,
-      quantity: r.quantity,
-      updatedAt: r.updatedAt,
-    )).toList();
-  }
+  Future<List<StockItem>> getAllItems() => select(stockItems).get();
 
-  Future<void> insertOrUpdateItem(StockItem item) async {
-    await into(stockItems).insertOnConflictUpdate(
-      StockItemsCompanion(
-        id: Value(item.id),
-        category: Value(item.category),
-        aroma: Value(item.aroma),
-        quantity: Value(item.quantity),
-        updatedAt: Value(item.updatedAt),
-      ),
-    );
-  }
+  Future<int> insertItem(StockItemsCompanion item) =>
+      into(stockItems).insert(item, mode: InsertMode.insertOrReplace);
 
-  Future<void> clearAll() => delete(stockItems).go();
+  Future updateItem(StockItemsCompanion item) =>
+      update(stockItems).replace(item);
+
+  Future deleteItem(int id) =>
+      (delete(stockItems)..where((tbl) => tbl.id.equals(id))).go();
 }

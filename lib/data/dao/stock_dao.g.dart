@@ -3,6 +3,6 @@
 part of 'stock_dao.dart';
 
 // ignore_for_file: type=lint
-mixin _$StockDaoMixin on DatabaseAccessor<dynamic /* = invalid*/> {
+mixin _$StockDaoMixin on DatabaseAccessor<AppDatabase> {
   $StockItemsTable get stockItems => attachedDatabase.stockItems;
 }

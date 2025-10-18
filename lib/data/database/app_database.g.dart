@@ -22,10 +22,21 @@ class $StockItemsTable extends StockItems
       'PRIMARY KEY AUTOINCREMENT',
     ),
   );
-  static const VerificationMeta _nameMeta = const VerificationMeta('name');
+  static const VerificationMeta _categoryMeta = const VerificationMeta(
+    'category',
+  );
   @override
-  late final GeneratedColumn<String> name = GeneratedColumn<String>(
-    'name',
+  late final GeneratedColumn<String> category = GeneratedColumn<String>(
+    'category',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _flavorMeta = const VerificationMeta('flavor');
+  @override
+  late final GeneratedColumn<String> flavor = GeneratedColumn<String>(
+    'flavor',
     aliasedName,
     false,
     type: DriftSqlType.string,
@@ -40,44 +51,10 @@ class $StockItemsTable extends StockItems
     aliasedName,
     false,
     type: DriftSqlType.int,
-    requiredDuringInsert: false,
-    defaultValue: const Constant(0),
-  );
-  static const VerificationMeta _isSyncedMeta = const VerificationMeta(
-    'isSynced',
+    requiredDuringInsert: true,
   );
   @override
-  late final GeneratedColumn<bool> isSynced = GeneratedColumn<bool>(
-    'is_synced',
-    aliasedName,
-    false,
-    type: DriftSqlType.bool,
-    requiredDuringInsert: false,
-    defaultConstraints: GeneratedColumn.constraintIsAlways(
-      'CHECK ("is_synced" IN (0, 1))',
-    ),
-    defaultValue: const Constant(false),
-  );
-  static const VerificationMeta _lastUpdatedMeta = const VerificationMeta(
-    'lastUpdated',
-  );
-  @override
-  late final GeneratedColumn<DateTime> lastUpdated = GeneratedColumn<DateTime>(
-    'last_updated',
-    aliasedName,
-    false,
-    type: DriftSqlType.dateTime,
-    requiredDuringInsert: false,
-    defaultValue: currentDateAndTime,
-  );
-  @override
-  List<GeneratedColumn> get $columns => [
-    id,
-    name,
-    quantity,
-    isSynced,
-    lastUpdated,
-  ];
+  List<GeneratedColumn> get $columns => [id, category, flavor, quantity];
   @override
   String get aliasedName => _alias ?? actualTableName;
   @override
@@ -93,34 +70,29 @@ class $StockItemsTable extends StockItems
     if (data.containsKey('id')) {
       context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
     }
-    if (data.containsKey('name')) {
+    if (data.containsKey('category')) {
       context.handle(
-        _nameMeta,
-        name.isAcceptableOrUnknown(data['name']!, _nameMeta),
+        _categoryMeta,
+        category.isAcceptableOrUnknown(data['category']!, _categoryMeta),
       );
     } else if (isInserting) {
-      context.missing(_nameMeta);
+      context.missing(_categoryMeta);
+    }
+    if (data.containsKey('flavor')) {
+      context.handle(
+        _flavorMeta,
+        flavor.isAcceptableOrUnknown(data['flavor']!, _flavorMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_flavorMeta);
     }
     if (data.containsKey('quantity')) {
       context.handle(
         _quantityMeta,
         quantity.isAcceptableOrUnknown(data['quantity']!, _quantityMeta),
       );
-    }
-    if (data.containsKey('is_synced')) {
-      context.handle(
-        _isSyncedMeta,
-        isSynced.isAcceptableOrUnknown(data['is_synced']!, _isSyncedMeta),
-      );
-    }
-    if (data.containsKey('last_updated')) {
-      context.handle(
-        _lastUpdatedMeta,
-        lastUpdated.isAcceptableOrUnknown(
-          data['last_updated']!,
-          _lastUpdatedMeta,
-        ),
-      );
+    } else if (isInserting) {
+      context.missing(_quantityMeta);
     }
     return context;
   }
@@ -135,21 +107,17 @@ class $StockItemsTable extends StockItems
         DriftSqlType.int,
         data['${effectivePrefix}id'],
       )!,
-      name: attachedDatabase.typeMapping.read(
+      category: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
-        data['${effectivePrefix}name'],
+        data['${effectivePrefix}category'],
+      )!,
+      flavor: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}flavor'],
       )!,
       quantity: attachedDatabase.typeMapping.read(
         DriftSqlType.int,
         data['${effectivePrefix}quantity'],
-      )!,
-      isSynced: attachedDatabase.typeMapping.read(
-        DriftSqlType.bool,
-        data['${effectivePrefix}is_synced'],
-      )!,
-      lastUpdated: attachedDatabase.typeMapping.read(
-        DriftSqlType.dateTime,
-        data['${effectivePrefix}last_updated'],
       )!,
     );
   }
@@ -162,35 +130,31 @@ class $StockItemsTable extends StockItems
 
 class StockItem extends DataClass implements Insertable<StockItem> {
   final int id;
-  final String name;
+  final String category;
+  final String flavor;
   final int quantity;
-  final bool isSynced;
-  final DateTime lastUpdated;
   const StockItem({
     required this.id,
-    required this.name,
+    required this.category,
+    required this.flavor,
     required this.quantity,
-    required this.isSynced,
-    required this.lastUpdated,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
     map['id'] = Variable<int>(id);
-    map['name'] = Variable<String>(name);
+    map['category'] = Variable<String>(category);
+    map['flavor'] = Variable<String>(flavor);
     map['quantity'] = Variable<int>(quantity);
-    map['is_synced'] = Variable<bool>(isSynced);
-    map['last_updated'] = Variable<DateTime>(lastUpdated);
     return map;
   }
 
   StockItemsCompanion toCompanion(bool nullToAbsent) {
     return StockItemsCompanion(
       id: Value(id),
-      name: Value(name),
+      category: Value(category),
+      flavor: Value(flavor),
       quantity: Value(quantity),
-      isSynced: Value(isSynced),
-      lastUpdated: Value(lastUpdated),
     );
   }
 
@@ -201,10 +165,9 @@ class StockItem extends DataClass implements Insertable<StockItem> {
     serializer ??= driftRuntimeOptions.defaultSerializer;
     return StockItem(
       id: serializer.fromJson<int>(json['id']),
-      name: serializer.fromJson<String>(json['name']),
+      category: serializer.fromJson<String>(json['category']),
+      flavor: serializer.fromJson<String>(json['flavor']),
       quantity: serializer.fromJson<int>(json['quantity']),
-      isSynced: serializer.fromJson<bool>(json['isSynced']),
-      lastUpdated: serializer.fromJson<DateTime>(json['lastUpdated']),
     );
   }
   @override
@@ -212,35 +175,29 @@ class StockItem extends DataClass implements Insertable<StockItem> {
     serializer ??= driftRuntimeOptions.defaultSerializer;
     return <String, dynamic>{
       'id': serializer.toJson<int>(id),
-      'name': serializer.toJson<String>(name),
+      'category': serializer.toJson<String>(category),
+      'flavor': serializer.toJson<String>(flavor),
       'quantity': serializer.toJson<int>(quantity),
-      'isSynced': serializer.toJson<bool>(isSynced),
-      'lastUpdated': serializer.toJson<DateTime>(lastUpdated),
     };
   }
 
   StockItem copyWith({
     int? id,
-    String? name,
+    String? category,
+    String? flavor,
     int? quantity,
-    bool? isSynced,
-    DateTime? lastUpdated,
   }) => StockItem(
     id: id ?? this.id,
-    name: name ?? this.name,
+    category: category ?? this.category,
+    flavor: flavor ?? this.flavor,
     quantity: quantity ?? this.quantity,
-    isSynced: isSynced ?? this.isSynced,
-    lastUpdated: lastUpdated ?? this.lastUpdated,
   );
   StockItem copyWithCompanion(StockItemsCompanion data) {
     return StockItem(
       id: data.id.present ? data.id.value : this.id,
-      name: data.name.present ? data.name.value : this.name,
+      category: data.category.present ? data.category.value : this.category,
+      flavor: data.flavor.present ? data.flavor.value : this.flavor,
       quantity: data.quantity.present ? data.quantity.value : this.quantity,
-      isSynced: data.isSynced.present ? data.isSynced.value : this.isSynced,
-      lastUpdated: data.lastUpdated.present
-          ? data.lastUpdated.value
-          : this.lastUpdated,
     );
   }
 
@@ -248,76 +205,69 @@ class StockItem extends DataClass implements Insertable<StockItem> {
   String toString() {
     return (StringBuffer('StockItem(')
           ..write('id: $id, ')
-          ..write('name: $name, ')
-          ..write('quantity: $quantity, ')
-          ..write('isSynced: $isSynced, ')
-          ..write('lastUpdated: $lastUpdated')
+          ..write('category: $category, ')
+          ..write('flavor: $flavor, ')
+          ..write('quantity: $quantity')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode => Object.hash(id, name, quantity, isSynced, lastUpdated);
+  int get hashCode => Object.hash(id, category, flavor, quantity);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
       (other is StockItem &&
           other.id == this.id &&
-          other.name == this.name &&
-          other.quantity == this.quantity &&
-          other.isSynced == this.isSynced &&
-          other.lastUpdated == this.lastUpdated);
+          other.category == this.category &&
+          other.flavor == this.flavor &&
+          other.quantity == this.quantity);
 }
 
 class StockItemsCompanion extends UpdateCompanion<StockItem> {
   final Value<int> id;
-  final Value<String> name;
+  final Value<String> category;
+  final Value<String> flavor;
   final Value<int> quantity;
-  final Value<bool> isSynced;
-  final Value<DateTime> lastUpdated;
   const StockItemsCompanion({
     this.id = const Value.absent(),
-    this.name = const Value.absent(),
+    this.category = const Value.absent(),
+    this.flavor = const Value.absent(),
     this.quantity = const Value.absent(),
-    this.isSynced = const Value.absent(),
-    this.lastUpdated = const Value.absent(),
   });
   StockItemsCompanion.insert({
     this.id = const Value.absent(),
-    required String name,
-    this.quantity = const Value.absent(),
-    this.isSynced = const Value.absent(),
-    this.lastUpdated = const Value.absent(),
-  }) : name = Value(name);
+    required String category,
+    required String flavor,
+    required int quantity,
+  }) : category = Value(category),
+       flavor = Value(flavor),
+       quantity = Value(quantity);
   static Insertable<StockItem> custom({
     Expression<int>? id,
-    Expression<String>? name,
+    Expression<String>? category,
+    Expression<String>? flavor,
     Expression<int>? quantity,
-    Expression<bool>? isSynced,
-    Expression<DateTime>? lastUpdated,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
-      if (name != null) 'name': name,
+      if (category != null) 'category': category,
+      if (flavor != null) 'flavor': flavor,
       if (quantity != null) 'quantity': quantity,
-      if (isSynced != null) 'is_synced': isSynced,
-      if (lastUpdated != null) 'last_updated': lastUpdated,
     });
   }
 
   StockItemsCompanion copyWith({
     Value<int>? id,
-    Value<String>? name,
+    Value<String>? category,
+    Value<String>? flavor,
     Value<int>? quantity,
-    Value<bool>? isSynced,
-    Value<DateTime>? lastUpdated,
   }) {
     return StockItemsCompanion(
       id: id ?? this.id,
-      name: name ?? this.name,
+      category: category ?? this.category,
+      flavor: flavor ?? this.flavor,
       quantity: quantity ?? this.quantity,
-      isSynced: isSynced ?? this.isSynced,
-      lastUpdated: lastUpdated ?? this.lastUpdated,
     );
   }
 
@@ -327,17 +277,14 @@ class StockItemsCompanion extends UpdateCompanion<StockItem> {
     if (id.present) {
       map['id'] = Variable<int>(id.value);
     }
-    if (name.present) {
-      map['name'] = Variable<String>(name.value);
+    if (category.present) {
+      map['category'] = Variable<String>(category.value);
+    }
+    if (flavor.present) {
+      map['flavor'] = Variable<String>(flavor.value);
     }
     if (quantity.present) {
       map['quantity'] = Variable<int>(quantity.value);
-    }
-    if (isSynced.present) {
-      map['is_synced'] = Variable<bool>(isSynced.value);
-    }
-    if (lastUpdated.present) {
-      map['last_updated'] = Variable<DateTime>(lastUpdated.value);
     }
     return map;
   }
@@ -346,10 +293,9 @@ class StockItemsCompanion extends UpdateCompanion<StockItem> {
   String toString() {
     return (StringBuffer('StockItemsCompanion(')
           ..write('id: $id, ')
-          ..write('name: $name, ')
-          ..write('quantity: $quantity, ')
-          ..write('isSynced: $isSynced, ')
-          ..write('lastUpdated: $lastUpdated')
+          ..write('category: $category, ')
+          ..write('flavor: $flavor, ')
+          ..write('quantity: $quantity')
           ..write(')'))
         .toString();
   }
@@ -370,18 +316,16 @@ abstract class _$AppDatabase extends GeneratedDatabase {
 typedef $$StockItemsTableCreateCompanionBuilder =
     StockItemsCompanion Function({
       Value<int> id,
-      required String name,
-      Value<int> quantity,
-      Value<bool> isSynced,
-      Value<DateTime> lastUpdated,
+      required String category,
+      required String flavor,
+      required int quantity,
     });
 typedef $$StockItemsTableUpdateCompanionBuilder =
     StockItemsCompanion Function({
       Value<int> id,
-      Value<String> name,
+      Value<String> category,
+      Value<String> flavor,
       Value<int> quantity,
-      Value<bool> isSynced,
-      Value<DateTime> lastUpdated,
     });
 
 class $$StockItemsTableFilterComposer
@@ -398,23 +342,18 @@ class $$StockItemsTableFilterComposer
     builder: (column) => ColumnFilters(column),
   );
 
-  ColumnFilters<String> get name => $composableBuilder(
-    column: $table.name,
+  ColumnFilters<String> get category => $composableBuilder(
+    column: $table.category,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get flavor => $composableBuilder(
+    column: $table.flavor,
     builder: (column) => ColumnFilters(column),
   );
 
   ColumnFilters<int> get quantity => $composableBuilder(
     column: $table.quantity,
-    builder: (column) => ColumnFilters(column),
-  );
-
-  ColumnFilters<bool> get isSynced => $composableBuilder(
-    column: $table.isSynced,
-    builder: (column) => ColumnFilters(column),
-  );
-
-  ColumnFilters<DateTime> get lastUpdated => $composableBuilder(
-    column: $table.lastUpdated,
     builder: (column) => ColumnFilters(column),
   );
 }
@@ -433,23 +372,18 @@ class $$StockItemsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
-  ColumnOrderings<String> get name => $composableBuilder(
-    column: $table.name,
+  ColumnOrderings<String> get category => $composableBuilder(
+    column: $table.category,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get flavor => $composableBuilder(
+    column: $table.flavor,
     builder: (column) => ColumnOrderings(column),
   );
 
   ColumnOrderings<int> get quantity => $composableBuilder(
     column: $table.quantity,
-    builder: (column) => ColumnOrderings(column),
-  );
-
-  ColumnOrderings<bool> get isSynced => $composableBuilder(
-    column: $table.isSynced,
-    builder: (column) => ColumnOrderings(column),
-  );
-
-  ColumnOrderings<DateTime> get lastUpdated => $composableBuilder(
-    column: $table.lastUpdated,
     builder: (column) => ColumnOrderings(column),
   );
 }
@@ -466,19 +400,14 @@ class $$StockItemsTableAnnotationComposer
   GeneratedColumn<int> get id =>
       $composableBuilder(column: $table.id, builder: (column) => column);
 
-  GeneratedColumn<String> get name =>
-      $composableBuilder(column: $table.name, builder: (column) => column);
+  GeneratedColumn<String> get category =>
+      $composableBuilder(column: $table.category, builder: (column) => column);
+
+  GeneratedColumn<String> get flavor =>
+      $composableBuilder(column: $table.flavor, builder: (column) => column);
 
   GeneratedColumn<int> get quantity =>
       $composableBuilder(column: $table.quantity, builder: (column) => column);
-
-  GeneratedColumn<bool> get isSynced =>
-      $composableBuilder(column: $table.isSynced, builder: (column) => column);
-
-  GeneratedColumn<DateTime> get lastUpdated => $composableBuilder(
-    column: $table.lastUpdated,
-    builder: (column) => column,
-  );
 }
 
 class $$StockItemsTableTableManager
@@ -513,30 +442,26 @@ class $$StockItemsTableTableManager
           updateCompanionCallback:
               ({
                 Value<int> id = const Value.absent(),
-                Value<String> name = const Value.absent(),
+                Value<String> category = const Value.absent(),
+                Value<String> flavor = const Value.absent(),
                 Value<int> quantity = const Value.absent(),
-                Value<bool> isSynced = const Value.absent(),
-                Value<DateTime> lastUpdated = const Value.absent(),
               }) => StockItemsCompanion(
                 id: id,
-                name: name,
+                category: category,
+                flavor: flavor,
                 quantity: quantity,
-                isSynced: isSynced,
-                lastUpdated: lastUpdated,
               ),
           createCompanionCallback:
               ({
                 Value<int> id = const Value.absent(),
-                required String name,
-                Value<int> quantity = const Value.absent(),
-                Value<bool> isSynced = const Value.absent(),
-                Value<DateTime> lastUpdated = const Value.absent(),
+                required String category,
+                required String flavor,
+                required int quantity,
               }) => StockItemsCompanion.insert(
                 id: id,
-                name: name,
+                category: category,
+                flavor: flavor,
                 quantity: quantity,
-                isSynced: isSynced,
-                lastUpdated: lastUpdated,
               ),
           withReferenceMapper: (p0) => p0
               .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
