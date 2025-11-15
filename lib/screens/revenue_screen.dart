@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:shopify_manager/providers/order_provider.dart';
 import 'package:shopify_manager/models/order.dart';
+import 'package:shopify_manager/db/database_service.dart';
+import 'package:shopify_manager/db/models/order_entity.dart';
 
 class RevenueScreen extends StatefulWidget {
   const RevenueScreen({Key? key}) : super(key: key);
@@ -31,39 +33,26 @@ class _RevenueScreenState extends State<RevenueScreen> {
   Future<void> _calculateRevenue() async {
     setState(() => loading = true);
 
+    final orders = context.watch<OrderProvider>().orders;
+
     final provider = Provider.of<OrderProvider>(context, listen: false);
-    // ❌ Sterge: await provider.fetchOrders();
-    // ✅ Pastreaza comenzile din memorie (modificate local)
+    final db = DatabaseService.instance;
+    await db.init();
 
-    double shopifyTotal = 0.0;
-    double alexTotal = 0.0;
-    double ediTotal = 0.0;
-    double profitReal = 0.0;
+    // 🔹 conversie Order → OrderEntity
+    final entities = provider.orders.map(orderToEntity).toList();
+    await db.upsertOrders(entities);
 
-    for (final order in provider.orders) {
-      // luam doar comenzile marcate ca incasate de utilizator
-      if (order.status != 'incasata') continue;
+    // 🔹 calculeaza totalurile direct din DB
+    final shopifyTotal = await db.sumShopifyIncasateTotal();
+    final alexTotal = await db.sumOlxAlexTotal();
+    final ediTotal = await db.sumOlxEdiTotal();
 
-      final total = order.totalPrice;
-      final method = order.shippingMethod?.toLowerCase() ?? '';
-
-      // === OLX ===
-      if (method.contains('olx')) {
-        if (method.contains('edi')) {
-          ediTotal += _calcOlxRevenue(order);
-        } else if (method.contains('alex')) {
-          alexTotal += _calcOlxRevenue(order);
-        }
-        continue;
-      }
-
-      // === SHOPIFY ===
-      shopifyTotal += total;
-
-      if (method.contains('easybox')) {
-        profitReal += _calcEasyboxProfit(order);
-      }
-    }
+    // 🔹 profit real pentru comenzile Easybox incasate
+    final easyboxOrders = provider.orders.where((o) =>
+    o.status == 'incasata' &&
+        (o.shippingMethod?.toLowerCase().contains('easybox') ?? false));
+    double profitReal = easyboxOrders.fold(0.0, (sum, o) => sum + _calcEasyboxProfit(o));
 
     setState(() {
       totalMagazin = shopifyTotal;
@@ -72,21 +61,33 @@ class _RevenueScreenState extends State<RevenueScreen> {
       baniReali = profitReal;
       loading = false;
     });
+
+    debugPrint("✅ Shopify total din DB: $shopifyTotal");
   }
 
-  double _calcOlxRevenue(Order order) {
-    int qty = 0;
-    for (final item in order.lineItems) {
-      qty += item.quantity;
-    }
-    return 60.0 * qty;
+  OrderEntity orderToEntity(Order o) {
+    return OrderEntity()
+      ..orderId = o.id
+      ..customerName = o.customerName
+      ..status = o.status
+      ..totalPrice = o.totalPrice
+      ..shippingMethod = o.shippingMethod
+      ..createdAt = o.createdAt
+      ..email = o.email
+      ..phone = o.phone
+      ..lineItems = o.lineItems.map((li) {
+        return OrderLineItemEmbedded()
+          ..id = li.id
+          ..title = li.title
+          ..quantity = li.quantity
+          ..price = li.price;
+      }).toList()
+      ..isOlxAlex = o.shippingMethod?.toLowerCase().contains('olx alex') ?? false
+      ..isOlxEdi = o.shippingMethod?.toLowerCase().contains('olx edi') ?? false;
   }
 
   double _calcEasyboxProfit(Order order) {
-    int qty = 0;
-    for (final item in order.lineItems) {
-      qty += item.quantity;
-    }
+    int qty = order.lineItems.fold(0, (sum, li) => sum + li.quantity);
 
     double deliveryBase = 17.99;
     double rambursFee = qty == 1
@@ -96,8 +97,7 @@ class _RevenueScreenState extends State<RevenueScreen> {
         : 3.05 + 2.36 * (qty - 1);
 
     double totalTransport = deliveryBase + rambursFee;
-    final total = double.tryParse(order.totalPrice.toString()) ?? 0.0;
-    return total - totalTransport;
+    return order.totalPrice - totalTransport;
   }
 
   Widget _buildSection({

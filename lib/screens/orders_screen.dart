@@ -38,7 +38,22 @@ class _OrdersScreenState extends State<OrdersScreen> {
   @override
   void initState() {
     super.initState();
-    _loadOrders();
+    final p = context.read<OrderProvider>();
+    p.startRealtime();   // începe ascultarea
+    p.fetchOrders();     // prima încărcare (din Supabase / Shopify)
+    // încărcăm datele și pornim realtime
+    Future.microtask(() async {
+      await _loadOrders();
+      if (mounted) {
+        context.read<OrderProvider>().startRealtime();
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    context.read<OrderProvider>().stopRealtime(); // oprește canalul
+    super.dispose();
   }
 
   Future<void> _loadOrders() async {
@@ -54,32 +69,25 @@ class _OrdersScreenState extends State<OrdersScreen> {
     for (final order in provider.orders) {
       final shipping = (order.shippingMethod ?? '').toLowerCase();
 
-      // 🔹 conversie automată pentru statusurile inițiale
+      // conversie anulări → retur
       final financial = (order.financialStatus ?? '').toLowerCase();
       final wasCanceled =
           order.status == 'canceled' ||
               financial == 'voided' ||
               financial == 'refunded' ||
-              order.fulfillmentStatus == 'cancelled' ||
-              order.toJson().containsKey('cancelled_at');
+              (order.fulfillmentStatus ?? '').toLowerCase() == 'cancelled';
 
       if (wasCanceled) {
         order.status = 'retur';
       } else {
         final localStatus = await LocalStorageService.getOrderStatus(order.id);
-
         if (localStatus != null) {
-          // păstrăm statusul salvat local
           order.status = localStatus;
         } else {
-          // comenzile vechi = incasata, noile = de impachetat
+          // regulă inițială: comenzile foarte vechi = incasata
           final created = order.createdAt;
           final threshold = DateTime.now().subtract(const Duration(days: 2));
-          if (created.isBefore(threshold)) {
-            order.status = 'incasata';
-          } else {
-            order.status = 'de_impachetat';
-          }
+          order.status = created.isBefore(threshold) ? 'incasata' : 'de_impachetat';
         }
       }
 
@@ -90,7 +98,7 @@ class _OrdersScreenState extends State<OrdersScreen> {
       }
     }
 
-    // 🔹 Mock OLX orders
+    // OLX (mock) — dacă ai deja OLX din Supabase, înlocuiește secțiunea asta
     olxOrders = {
       'Edi': [
         Order(
@@ -139,15 +147,14 @@ class _OrdersScreenState extends State<OrdersScreen> {
   Future<void> _updateOrderStatus(Order order, String newStatus) async {
     setState(() => order.status = newStatus);
     await LocalStorageService.saveOrderStatus(order.id, newStatus);
-    final provider = Provider.of<OrderProvider>(context, listen: false);
-    await provider.syncOrderStatus(order.id, newStatus);
+    await context.read<OrderProvider>().syncOrderStatus(order.id, newStatus);
   }
 
   Widget _buildOrderCard(Order order, int index) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final color = statusColors[order.status] ?? Colors.grey;
 
-    // 🔹 Calcul profit + transport
+    // calcul total / profit / transport
     double total = order.totalPrice;
     double profit = 0;
     double shippingCost = 0;
@@ -198,7 +205,7 @@ class _OrdersScreenState extends State<OrdersScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // 🔹 Dropdown status
+          // status
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 8),
             decoration: BoxDecoration(
@@ -234,21 +241,29 @@ class _OrdersScreenState extends State<OrdersScreen> {
             ),
           ),
           const SizedBox(height: 10),
-          Text(order.customerName,
-              style: TextStyle(
-                fontWeight: FontWeight.w600,
-                fontSize: 16,
-                color: isDark ? Colors.white : Colors.black,
-              )),
+
+          // nume client
+          Text(
+            order.customerName,
+            style: TextStyle(
+              fontWeight: FontWeight.w600,
+              fontSize: 16,
+              color: isDark ? Colors.white : Colors.black,
+            ),
+          ),
           const SizedBox(height: 4),
+
+          // telefon + copy
           if (order.phone != null)
             Row(
               children: [
-                Text("Telefon: ${order.phone}",
-                    style: TextStyle(
-                      fontSize: 13,
-                      color: isDark ? Colors.white70 : Colors.black87,
-                    )),
+                Text(
+                  "Telefon: ${order.phone}",
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: isDark ? Colors.white70 : Colors.black87,
+                  ),
+                ),
                 const SizedBox(width: 6),
                 IconButton(
                   padding: EdgeInsets.zero,
@@ -267,44 +282,56 @@ class _OrdersScreenState extends State<OrdersScreen> {
                 ),
               ],
             ),
+
           const SizedBox(height: 8),
+
+          // produse
           if (order.lineItems.isNotEmpty) ...[
             const Text("Produse:",
-                style:
-                TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
             const SizedBox(height: 4),
             for (final item in order.lineItems)
               Padding(
                 padding: const EdgeInsets.only(left: 8, bottom: 3),
-                child: Text("- ${item.title} (x${item.quantity})",
-                    style: TextStyle(
-                        fontSize: 13,
-                        color: isDark ? Colors.grey[300] : Colors.black87)),
+                child: Text(
+                  "- ${item.title} (x${item.quantity})",
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: isDark ? Colors.grey[300] : Colors.black87,
+                  ),
+                ),
               ),
           ],
+
           const SizedBox(height: 6),
+
+          // total
           if (!order.id.startsWith('olx'))
             Text(
               "Total: ${total.toStringAsFixed(2)} RON (${profit.toStringAsFixed(2)} + ${shippingCost.toStringAsFixed(2)})",
               style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w500,
-                  color: color),
+                fontSize: 14,
+                fontWeight: FontWeight.w500,
+                color: color,
+              ),
             )
           else
             Text(
               "Total: ${total.toStringAsFixed(2)} RON",
               style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w500,
-                  color: color),
+                fontSize: 14,
+                fontWeight: FontWeight.w500,
+                color: color,
+              ),
             ),
+
           const SizedBox(height: 10),
+
+          // buton AWB
           Align(
             alignment: Alignment.centerRight,
             child: OutlinedButton.icon(
-              icon:
-              Icon(Icons.local_shipping_outlined, size: 18, color: color),
+              icon: Icon(Icons.local_shipping_outlined, size: 18, color: color),
               label: Text("Vezi AWB", style: TextStyle(color: color)),
               style: OutlinedButton.styleFrom(
                 side: BorderSide(color: color, width: 1.4),
@@ -315,16 +342,16 @@ class _OrdersScreenState extends State<OrdersScreen> {
               onPressed: () => showDialog(
                 context: context,
                 builder: (_) => AlertDialog(
-                  backgroundColor:
-                  isDark ? const Color(0xFF2E2E2E) : Colors.white,
-                  title: Text("AWB indisponibil",
-                      style: TextStyle(
-                          color: isDark ? Colors.white : Colors.black)),
+                  backgroundColor: isDark ? const Color(0xFF2E2E2E) : Colors.white,
+                  title: Text(
+                    "AWB indisponibil",
+                    style: TextStyle(color: isDark ? Colors.white : Colors.black),
+                  ),
                   content: Text(
                     "Aceasta functionalitate va fi disponibila intr-o versiune viitoare.",
                     style: TextStyle(
-                        color:
-                        isDark ? Colors.white70 : Colors.black87),
+                      color: isDark ? Colors.white70 : Colors.black87,
+                    ),
                   ),
                   actions: [
                     TextButton(
@@ -361,51 +388,35 @@ class _OrdersScreenState extends State<OrdersScreen> {
   }
 
   Widget _buildBadges(Map<String, List<Order>> source) {
-    int redCount = 0;     // de impachetat / impachetata
-    int blueCount = 0;    // trimisa / ridicata
-    int greenCount = 0;   // incasata
-    int greyCount = 0;    // retur
+    int red = 0;   // de_impachetat / impachetata
+    int blue = 0;  // trimisa / ridicata
+    int green = 0; // incasata
+    int grey = 0;  // retur
 
-    for (final orders in source.values) {
-      for (final o in orders) {
+    for (final list in source.values) {
+      for (final o in list) {
         switch (o.status) {
           case 'de_impachetat':
           case 'impachetata':
-            redCount++;
-            break;
+            red++; break;
           case 'trimisa':
           case 'ridicata':
-            blueCount++;
-            break;
+            blue++; break;
           case 'incasata':
-            greenCount++;
-            break;
+            green++; break;
           case 'retur':
-            greyCount++;
-            break;
+            grey++; break;
         }
       }
     }
 
-    final badges = <Widget>[];
+    final children = <Widget>[];
+    if (red > 0)  children.add(_buildBadge(red.toString(), Colors.redAccent));
+    if (blue > 0) { if (children.isNotEmpty) children.add(const SizedBox(width: 6)); children.add(_buildBadge(blue.toString(), Colors.blueAccent)); }
+    if (green > 0){ if (children.isNotEmpty) children.add(const SizedBox(width: 6)); children.add(_buildBadge(green.toString(), Colors.green)); }
+    if (grey > 0) { if (children.isNotEmpty) children.add(const SizedBox(width: 6)); children.add(_buildBadge(grey.toString(), Colors.grey)); }
 
-    if (redCount > 0) {
-      badges.add(_buildBadge(redCount.toString(), Colors.redAccent));
-    }
-    if (blueCount > 0) {
-      if (badges.isNotEmpty) badges.add(const SizedBox(width: 6));
-      badges.add(_buildBadge(blueCount.toString(), Colors.blueAccent));
-    }
-    if (greenCount > 0) {
-      if (badges.isNotEmpty) badges.add(const SizedBox(width: 6));
-      badges.add(_buildBadge(greenCount.toString(), Colors.green));
-    }
-    if (greyCount > 0) {
-      if (badges.isNotEmpty) badges.add(const SizedBox(width: 6));
-      badges.add(_buildBadge(greyCount.toString(), Colors.grey));
-    }
-
-    return Row(mainAxisSize: MainAxisSize.min, children: badges);
+    return Row(mainAxisSize: MainAxisSize.min, children: children);
   }
 
   Widget _buildFloatingSection(String title, Map<String, List<Order>> source) {
@@ -469,21 +480,23 @@ class _OrdersScreenState extends State<OrdersScreen> {
           if (active.isEmpty && finished.isEmpty) active = orders;
 
           return ExpansionTile(
-            title: Text(name,
-                style: TextStyle(
-                    color: theme.colorScheme.primary,
-                    fontWeight: FontWeight.w600)),
+            title: Text(
+              name,
+              style: TextStyle(
+                color: theme.colorScheme.primary,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
             children: [
-              for (int i = 0; i < active.length; i++)
-                _buildOrderCard(active[i], i),
+              for (int i = 0; i < active.length; i++) _buildOrderCard(active[i], i),
               if (finished.isNotEmpty)
                 ExpansionTile(
-                  title: const Text("Finalizate",
-                      style: TextStyle(
-                          fontWeight: FontWeight.bold, fontSize: 15)),
+                  title: const Text(
+                    "Finalizate",
+                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                  ),
                   children: [
-                    for (int i = 0; i < finished.length; i++)
-                      _buildOrderCard(finished[i], i),
+                    for (int i = 0; i < finished.length; i++) _buildOrderCard(finished[i], i),
                   ],
                 ),
             ],

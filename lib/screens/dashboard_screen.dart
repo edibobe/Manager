@@ -1,9 +1,18 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+
 import 'package:shopify_manager/screens/products_screen.dart';
 import 'package:shopify_manager/screens/orders_screen.dart';
 import 'package:shopify_manager/screens/revenue_screen.dart';
 import 'package:shopify_manager/services/theme_service.dart';
+
+// ✅ provider-ele (ca să nu mai dea eroarea "isn't a type")
+import 'package:shopify_manager/providers/product_provider.dart';
+import 'package:shopify_manager/providers/order_provider.dart';
+
+// ✅ supa din main.dart
+import 'package:shopify_manager/main.dart' show supa;
+import 'package:shopify_manager/services/supabase_service.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({Key? key}) : super(key: key);
@@ -19,12 +28,33 @@ class _DashboardScreenState extends State<DashboardScreen>
   @override
   void initState() {
     super.initState();
+    final p = context.read<OrderProvider>();
+    p.startRealtime();
+    p.fetchOrders();
     _tabController = TabController(length: 3, vsync: this);
+
+    // încărcăm datele inițiale după primul frame (ca să avem context/Providers)
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      await Future.wait([
+        context.read<ProductProvider>().fetchProducts(),
+        context.read<OrderProvider>().fetchOrders(),
+      ]);
+
+      try {
+        final orders = context.read<OrderProvider>().orders;
+        await SupabaseService.upsertOrders(orders);
+        await context.read<OrderProvider>().fetchOrders();
+        debugPrint('[Supabase] Upsert orders OK: ${orders.length}');
+      } catch (e) {
+        debugPrint('[Supabase] Upsert orders ERROR: $e');
+      }
+    });
   }
 
   @override
   void dispose() {
     _tabController.dispose();
+    context.read<OrderProvider>().stopRealtime();
     super.dispose();
   }
 
