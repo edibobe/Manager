@@ -1,6 +1,7 @@
 import 'package:isar/isar.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:shopify_manager/db/models/order_entity.dart';
+import 'package:shopify_manager/db/models/product_entity.dart';
 
 class DatabaseService {
   static final DatabaseService instance = DatabaseService._internal();
@@ -16,6 +17,7 @@ class DatabaseService {
     _isar = await Isar.open(
       [
         OrderEntitySchema,
+        ProductEntitySchema,
       ],
       directory: dir.path,
     );
@@ -45,6 +47,31 @@ class DatabaseService {
         await db.orderEntitys.put(order);
       }
     });
+  }
+
+  /// 🔹 Insereaza sau actualizeaza produsele
+  Future<void> upsertProducts(List<ProductEntity> products) async {
+    final db = isar;
+    await db.writeTxn(() async {
+      for (final p in products) {
+        final existing = await db.productEntitys
+            .filter()
+            .productIdEqualTo(p.productId)
+            .findFirst();
+
+        if (existing != null) {
+          p.isarId = existing.isarId; // pastram acelasi ID intern
+        }
+
+        await db.productEntitys.put(p);
+      }
+    });
+  }
+
+  /// 🔹 Returneaza toate produsele salvate local
+  Future<List<ProductEntity>> getAllProducts() async {
+    final db = isar;
+    return db.productEntitys.where().findAll();
   }
 
   /// 🔹 Returnează suma totală pentru comenzile incasate din Shopify

@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:shopify_manager/services/shopify_api.dart';
 import 'package:shopify_manager/models/product.dart';
+import 'package:shopify_manager/db/database_service.dart';
+import 'package:shopify_manager/db/models/product_entity.dart';
+import 'package:shopify_manager/mappers/product_mapper.dart';
 
 class ProductProvider extends ChangeNotifier {
   final ShopifyApi api;
@@ -18,10 +21,28 @@ class ProductProvider extends ChangeNotifier {
     loading = true;
     error = null;
     notifyListeners();
+
     try {
-      products = await api.getProducts();
+      // 🔹 1. luam produsele din Shopify
+      final remote = await api.getProducts();
+      products = remote;
+
+      // 🔹 2. le salvam in Isar ca backup
+      final entities = remote.map(productToEntity).toList();
+      await DatabaseService.instance.upsertProducts(entities);
     } catch (e) {
       error = e.toString();
+
+      // 🔹 3. fallback: daca Shopify pica, incercam sa luam din Isar
+      try {
+        final cachedEntities = await DatabaseService.instance.getAllProducts();
+        if (cachedEntities.isNotEmpty) {
+          products = cachedEntities.map(entityToProduct).toList();
+          // optional: poti pune error = null; daca vrei sa nu mai afisezi eroarea
+        }
+      } catch (_) {
+        // daca pica si Isar, lasam eroarea initiala
+      }
     } finally {
       loading = false;
       notifyListeners();
@@ -39,26 +60,32 @@ class ProductProvider extends ChangeNotifier {
   }
 
   // trimite toate modificările către Shopify
-  Future<void> saveAllChanges() async {
-    if (_pendingUpdates.isEmpty) return;
+  Future<bool> saveAllChanges() async {
+    if (_pendingUpdates.isEmpty) return true;
 
     loading = true;
+    error = null;
     notifyListeners();
+
+    var success = true;
 
     try {
       for (final entry in _pendingUpdates.entries) {
         await api.updateProductStock(entry.key, entry.value);
       }
+
       _pendingUpdates.clear();
     } catch (e) {
       error = e.toString();
+      success = false;
     } finally {
-      if (loading) {
-        loading = false;
-        notifyListeners();
-      }
+      loading = false;
+      notifyListeners();
     }
+
+    return success;
   }
+
 
   bool get hasPendingUpdates => _pendingUpdates.isNotEmpty;
 

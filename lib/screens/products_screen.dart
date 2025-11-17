@@ -8,6 +8,13 @@ import 'package:shopify_manager/services/theme_service.dart';
 import 'package:shopify_manager/data/aromas_data.dart';
 import 'package:shopify_manager/widgets/aroma_card.dart';
 
+enum ProductSortMode {
+  nameAsc,
+  nameDesc,
+  stockAsc,
+  stockDesc,
+}
+
 class ProductsScreen extends StatefulWidget {
   const ProductsScreen({Key? key}) : super(key: key);
 
@@ -31,6 +38,8 @@ class _ProductsScreenState extends State<ProductsScreen>
   String searchQuery = "";
 
   late AnimationController _fabPulseController;
+
+  ProductSortMode _sortMode = ProductSortMode.nameAsc;
 
   @override
   void initState() {
@@ -139,23 +148,59 @@ class _ProductsScreenState extends State<ProductsScreen>
     }
   }
 
+  List<Product> _applySort(List<Product> products) {
+    final sorted = List<Product>.from(products);
+
+    switch (_sortMode) {
+      case ProductSortMode.nameAsc:
+        sorted.sort((a, b) => a.title.toLowerCase().compareTo(b.title.toLowerCase()));
+        break;
+      case ProductSortMode.nameDesc:
+        sorted.sort((a, b) => b.title.toLowerCase().compareTo(a.title.toLowerCase()));
+        break;
+      case ProductSortMode.stockAsc:
+        sorted.sort((a, b) => a.inventory.compareTo(b.inventory));
+        break;
+      case ProductSortMode.stockDesc:
+        sorted.sort((a, b) => b.inventory.compareTo(a.inventory));
+        break;
+    }
+
+    return sorted;
+  }
+
   Future<void> _saveAllChanges() async {
     final provider = Provider.of<ProductProvider>(context, listen: false);
     setState(() => saving = true);
 
-    await provider.saveAllChanges();
-    await LocalStorageService.clearLocalChanges();
+    final ok = await provider.saveAllChanges();
 
-    setState(() => saving = false);
+    if (ok) {
+      await LocalStorageService.clearLocalChanges();
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('✔ Modificarile au fost salvate in Shopify'),
+            backgroundColor: Colors.green,
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+    } else {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('⚠ Eroare la salvare. Modificarile locale au ramas memorate.'),
+            backgroundColor: Colors.orange,
+            duration: Duration(seconds: 3),
+          ),
+        );
+      }
+    }
 
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('✅ Modificarile au fost salvate in Shopify'),
-          backgroundColor: Colors.green,
-          duration: Duration(seconds: 2),
-        ),
-      );
+      setState(() => saving = false);
     }
   }
 
@@ -265,6 +310,33 @@ class _ProductsScreenState extends State<ProductsScreen>
                   style: Theme.of(context).textTheme.titleLarge,
                 ),
               ),
+              PopupMenuButton<ProductSortMode>(
+                tooltip: 'Sorteaza produsele',
+                icon: const Icon(Icons.sort, color: Colors.blueAccent),
+                onSelected: (mode) {
+                  setState(() {
+                    _sortMode = mode;
+                  });
+                },
+                itemBuilder: (ctx) => const [
+                  PopupMenuItem(
+                    value: ProductSortMode.nameAsc,
+                    child: Text('Nume A-Z'),
+                  ),
+                  PopupMenuItem(
+                    value: ProductSortMode.nameDesc,
+                    child: Text('Nume Z-A'),
+                  ),
+                  PopupMenuItem(
+                    value: ProductSortMode.stockAsc,
+                    child: Text('Stoc crescator'),
+                  ),
+                  PopupMenuItem(
+                    value: ProductSortMode.stockDesc,
+                    child: Text('Stoc descrescator'),
+                  ),
+                ],
+              ),
               IconButton(
                 tooltip: 'Reincarca produsele',
                 icon: const Icon(Icons.refresh, color: Colors.blueAccent),
@@ -306,11 +378,13 @@ class _ProductsScreenState extends State<ProductsScreen>
     final aromas = groupedProducts[title] ?? [];
     final isExpanded = expanded[title] ?? false;
 
-    final visibleAromas = searchQuery.isEmpty
+    List<Product> visibleAromas = searchQuery.isEmpty
         ? aromas
         : aromas
         .where((a) => a.title.toLowerCase().contains(searchQuery.toLowerCase()))
         .toList();
+
+    visibleAromas = _applySort(visibleAromas);
 
     return Container(
       key: ValueKey(title),
